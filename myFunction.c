@@ -295,7 +295,7 @@ void delete(char **arg) {
     if (unlink(path) == 0) {
         printf("File deleted successfully: %s\n", path);
     } else {
-        printf("-myShell: unlink: %s: No such file or directory\n", path);
+        perror("-myShell: unlink");
     }
 
     free(path);
@@ -312,6 +312,7 @@ void systemCall(char **arg)
     if (pid == 0 && execvp(arg[0], arg) == -1)
         exit(1);
 }
+
 void mypipe(char **argv1, char **argv2)
 {
     int fildes[2];
@@ -337,4 +338,179 @@ void mypipe(char **argv1, char **argv2)
         /* standard input now comes from pipe */
         execvp(argv2[0], argv2);
     }
+}
+
+void readFile(char **args) {
+ if (args[1] == NULL) {
+        printf("Usage: read <filename>\n");
+        return;
+    }
+
+    // Combine arguments into a single path
+    char path[1024] = "";
+    for (int i = 1; args[i] != NULL; i++) {
+        strcat(path, args[i]);
+        strcat(path, " ");
+    }
+
+    // Remove trailing whitespace
+    path[strlen(path) - 1] = '\0';
+
+    // Remove quotes if present
+    if (path[0] == '"' && path[strlen(path) - 1] == '"') {
+        memmove(path, path + 1, strlen(path));
+        path[strlen(path) - 1] = '\0';
+    }
+
+    FILE *file = fopen(path, "r");
+    if (file == NULL) {
+        perror("Error");
+        return;
+    }
+
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), file) != NULL) {
+        printf("%s", buffer);
+    }
+
+    fclose(file);
+}
+
+
+void move(char **args) {
+    if (args[1] == NULL || args[2] == NULL) {
+        fprintf(stderr, "Usage: move <source_file> <destination_path>\n");
+        return;
+    }
+
+    char *sourceFile = args[1];
+    char *destinationPath = args[2];
+
+    // Concatenate source file path
+    char *sourcePath = strdup(sourceFile);
+    for (int i = 2; args[i] != NULL; ++i) {
+        sourcePath = realloc(sourcePath, strlen(sourcePath) + strlen(args[i]) + 2); // +2 for space and null terminator
+        strcat(sourcePath, " ");
+        strcat(sourcePath, args[i]);
+    }
+
+    // Concatenate destination path
+    char *destination = strdup(destinationPath);
+    for (int i = 3; args[i] != NULL; ++i) {
+        destination = realloc(destination, strlen(destination) + strlen(args[i]) + 2); // +2 for space and null terminator
+        strcat(destination, " ");
+        strcat(destination, args[i]);
+    }
+
+    // Move file
+    int status = rename(sourcePath, destination);
+
+    if (status != 0) {
+        fprintf(stderr, "Error: Failed to move file '%s' to '%s'.\n", sourcePath, destination);
+    } else {
+        printf("File '%s' moved to '%s' successfully.\n", sourcePath, destination);
+    }
+
+    free(sourcePath);
+    free(destination);
+}
+
+void wordCount(char **args) {
+    if (args[1] == NULL || args[2] == NULL) {
+        fprintf(stderr, "Usage: wc <-l/-w> <filename>\n");
+        return;
+    }
+
+    char *option = args[1];
+    char *filename = args[2];
+    char *path;
+
+    if (filename[0] == '\"') {
+        // Concatenate all substrings enclosed by quotes
+        path = strdup(filename + 1); // Skip the opening quote
+        for (int i = 3; args[i] != NULL; i++) {
+            if (args[i][strlen(args[i]) - 1] == '\"') {
+                // Remove the double quotes from the end of the concatenated path
+                args[i][strlen(args[i]) - 1] = '\0';
+                strcat(path, " ");
+                strcat(path, args[i]);
+                break;
+            }
+            strcat(path, " ");
+            strcat(path, args[i]);
+        }
+    } else {
+        // If the argument doesn't start with a double quote, use it as is
+        path = strdup(filename);
+    }
+
+    // Check if the last character is a closing quote
+    if (path[strlen(path) - 1] == '\"') {
+        // Remove the closing quote
+        path[strlen(path) - 1] = '\0';
+    }
+
+    FILE *file = fopen(path, "r");
+
+    if (file == NULL) {
+        fprintf(stderr, "Error: Unable to open file '%s'\n", path);
+        free(path);
+        return;
+    }
+
+    if (strcmp(option, "-l") == 0) {
+        // Count the number of lines
+        int lineCount = 0;
+        char line[1024]; // Assuming maximum line length of 1024 characters
+        while (fgets(line, sizeof(line), file) != NULL) {
+            lineCount++;
+        }
+        // Print the number of lines without appending the filename
+        printf("Number of lines: %d\n", lineCount);
+    
+    } else if (strcmp(option, "-w") == 0) {
+        // Count the number of words
+        int wordCount = 0;
+        int c;
+        int lastChar = '\n'; // Previous character
+        while ((c = fgetc(file)) != EOF) {
+            if ((c == ' ' || c == '\n' || c == '\t') && lastChar != ' ' && lastChar != '\n' && lastChar != '\t') {
+                wordCount++;
+            }
+            lastChar = c;
+        }
+        // If the file doesn't end with a whitespace, we need to increment word count by 1
+        if (lastChar != ' ' && lastChar != '\n' && lastChar != '\t') {
+            wordCount++;
+        }
+        printf("Number of words: %d\n", wordCount);
+    } else {
+        fprintf(stderr, "Error: Invalid option. Please use -l or -w.\n");
+    }
+
+    fclose(file);
+    free(path);
+}
+
+void echoppend(char **args) {
+    // Ensure there are at least 4 arguments (echoppend, string, ">>", path)
+    if (args[0] == NULL || args[1] == NULL || args[2] == NULL || args[3] == NULL) {
+        fprintf(stderr, "Invalid arguments\n");
+        return;
+    }
+
+    // Open file in append mode (creates file if it doesn't exist)
+    FILE *file = fopen(args[3], "a");
+    if (file == NULL) {
+        fprintf(stderr, "Failed to open file\n");
+        return;
+    }
+
+    // Write the string to the file
+    fprintf(file, "%s\n", args[1]);
+
+    // Close the file
+    fclose(file);
+
+    printf("String appended to file successfully.\n");
 }
